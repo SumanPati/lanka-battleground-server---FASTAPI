@@ -106,7 +106,6 @@ def create_initial_state():
         "cardIdCounter": 0,
     }
 
-
 game_state = create_initial_state()
 available_characters = list(PLAYER_CHARACTERS.keys())
 
@@ -124,6 +123,21 @@ def get_random_character():
 
     return {"name": key, **PLAYER_CHARACTERS[key]}
 
+
+
+def reset_game():
+    available_characters = list(PLAYER_CHARACTERS.keys())
+    game_state["deck"] = shuffle(CARD_FILES.copy())
+    game_state["board"] = []
+    game_state["cardIdCounter"] = 0
+
+    for player in game_state["players"].values():
+        player["health"] = 30
+        player["maxHealth"] = 30
+        player["hand"] = []
+        player["character"] = get_random_character()
+    
+    return game_state
 
 # ======================
 # BROADCAST
@@ -192,8 +206,8 @@ async def websocket_endpoint(ws: WebSocket):
                     game_state = msg["state"]
 
                 case "RESET":
-                    game_state = create_initial_state()
-                    available_characters = list(PLAYER_CHARACTERS.keys())
+                    game_state = reset_game()
+                    
 
             await broadcast()
 
