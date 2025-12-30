@@ -1,22 +1,46 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-import uvicorn
-import random
 import json
+import random
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="Battleground Lanka")
 
-# =======================
+# ---------- PATHS ----------
+BASE_DIR = Path(__file__).resolve().parent.parent
+FRONTEND_DIR = BASE_DIR / "frontend" / "dist"
+
+# ---------- STATIC FILES ----------
+app.mount(
+    "/assets",
+    StaticFiles(directory=FRONTEND_DIR / "assets"),
+    name="assets"
+)
+
+app.mount(
+    "/cards",
+    StaticFiles(directory=FRONTEND_DIR / "cards"),
+    name="cards"
+)
+
+
+# ======================
 # HELPERS
-# =======================
+# ======================
 
 def shuffle(array):
-    arr = array[:]
-    random.shuffle(arr)
-    return arr
+    shuffled = array[:]
+    for i in range(len(shuffled) - 1, 0, -1):
+        j = random.randint(0, i)
+        shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+    return shuffled
 
-# =======================
+
+# ======================
 # DATA
-# =======================
+# ======================
 
 PLAYER_CHARACTERS = {
     "hanuman": {"img": "Character/hanuman.jpg"},
@@ -69,9 +93,10 @@ CARD_FILES = [
     for _ in range(card["count"])
 ]
 
-# =======================
+
+# ======================
 # GAME STATE
-# =======================
+# ======================
 
 def create_initial_state():
     return {
@@ -81,98 +106,114 @@ def create_initial_state():
         "cardIdCounter": 0,
     }
 
+
 game_state = create_initial_state()
 available_characters = list(PLAYER_CHARACTERS.keys())
 
+clients: set[WebSocket] = set()
+
+
 def get_random_character():
     global available_characters
+
     if not available_characters:
         available_characters = list(PLAYER_CHARACTERS.keys())
 
     key = random.choice(available_characters)
     available_characters.remove(key)
+
     return {"name": key, **PLAYER_CHARACTERS[key]}
 
-# =======================
-# CONNECTION MANAGER
-# =======================
 
-class ConnectionManager:
-    def __init__(self):
-        self.connections: list[WebSocket] = []
+# ======================
+# BROADCAST
+# ======================
 
-    async def connect(self, ws: WebSocket):
-        await ws.accept()
-        self.connections.append(ws)
+async def broadcast():
+    payload = json.dumps({"type": "STATE", "state": game_state})
+    dead = []
 
-    def disconnect(self, ws: WebSocket):
-        self.connections.remove(ws)
+    for ws in clients:
+        try:
+            await ws.send_text(payload)
+        except Exception:
+            dead.append(ws)
 
-    async def broadcast(self):
-        message = json.dumps({
-            "type": "STATE",
-            "state": game_state
-        })
-        for ws in self.connections:
-            await ws.send_text(message)
+    for ws in dead:
+        clients.discard(ws)
 
-manager = ConnectionManager()
 
-# =======================
-# WEBSOCKET ENDPOINT
-# =======================
+# ======================
+# ROUTES
+# ======================
+
+@app.get("/")
+def root():
+    return FileResponse(FRONTEND_DIR / "index.html")
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
+
+
+# ======================
+# WEBSOCKET
+# ======================
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     global game_state, available_characters
 
-    await manager.connect(ws)
-    await ws.send_text(json.dumps({
-        "type": "STATE",
-        "state": game_state
-    }))
+    await ws.accept()
+    clients.add(ws)
+
+    # Send initial state
+    await ws.send_text(json.dumps({"type": "STATE", "state": game_state}))
 
     try:
         while True:
-            data = json.loads(await ws.receive_text())
+            raw = await ws.receive_text()
+            msg = json.loads(raw)
 
-            match data["type"]:
+            match msg.get("type"):
                 case "JOIN":
-                    player = data["player"]
+                    player = msg["player"]
+
                     if player not in game_state["players"]:
                         game_state["players"][player] = {
                             "health": 30,
                             "maxHealth": 30,
                             "hand": [],
-                            "character": get_random_character()
+                            "character": get_random_character(),
                         }
 
                 case "UPDATE":
-                    game_state = data["state"]
+                    game_state = msg["state"]
 
                 case "RESET":
                     game_state = create_initial_state()
                     available_characters = list(PLAYER_CHARACTERS.keys())
 
-            await manager.broadcast()
+            await broadcast()
 
     except WebSocketDisconnect:
-        manager.disconnect(ws)
-        await manager.broadcast()
-
-# =======================
-# ROUTES
-# =======================
-
-@app.get("/")
-def root():
-    return {
-        "status": "ok",
-        "service": "Battleground Lanka",
-        "ws": "/ws"
-    }
+        clients.discard(ws)
 
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+# ======================
+# MAIN
+# ======================
+
+def main():
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+        log_level="info",
+    )
+
+
+if __name__ == "__main__":
+    main()
