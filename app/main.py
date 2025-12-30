@@ -101,6 +101,7 @@ CARD_FILES = [
 def create_initial_state():
     return {
         "deck": shuffle(CARD_FILES),
+        "usedPile": [],
         "board": [],
         "players": {},
         "cardIdCounter": 0,
@@ -122,8 +123,6 @@ def get_random_character():
     available_characters.remove(key)
 
     return {"name": key, **PLAYER_CHARACTERS[key]}
-
-
 
 def reset_game():
     available_characters = list(PLAYER_CHARACTERS.keys())
@@ -207,7 +206,12 @@ async def websocket_endpoint(ws: WebSocket):
 
                 case "RESET":
                     game_state = reset_game()
-                    
+                
+                case "RESHUFFLE_USED":
+                    if game_state["usedPile"]:
+                        game_state["deck"].extend(game_state["usedPile"])
+                        game_state["usedPile"] = []
+                        game_state["deck"] = shuffle(game_state["deck"])
 
             await broadcast()
 
