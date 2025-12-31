@@ -1,5 +1,6 @@
 import json
 import random
+from copy import deepcopy
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -105,13 +106,14 @@ def create_initial_state():
         "board": [],
         "players": {},
         "cardIdCounter": 0,
+        "transfer":None,
     }
 
 game_state = create_initial_state()
 available_characters = list(PLAYER_CHARACTERS.keys())
 
 clients: set[WebSocket] = set()
-
+ws_to_player: dict[WebSocket, str] = {}
 
 def get_random_character():
     global available_characters
@@ -154,6 +156,7 @@ async def broadcast():
 
     for ws in dead:
         clients.discard(ws)
+        ws_to_player.pop(ws, None)
 
 
 # ======================
@@ -180,7 +183,7 @@ async def websocket_endpoint(ws: WebSocket):
 
     await ws.accept()
     clients.add(ws)
-
+    
     # Send initial state
     await ws.send_text(json.dumps({"type": "STATE", "state": game_state}))
 
@@ -200,23 +203,155 @@ async def websocket_endpoint(ws: WebSocket):
                             "hand": [],
                             "character": get_random_character(),
                         }
+                        
+                    ws_to_player[ws] = player
 
-                case "UPDATE":
-                    game_state = msg["state"]
+                case "DRAW_CARD":
+                    player = ws_to_player.get(ws)
+                    if not player:
+                        return
 
+                    if not game_state["deck"]:
+                        return
+
+                    card_file = game_state["deck"].pop(0)
+                    card_id = f"card-{game_state['cardIdCounter']}"
+                    game_state["cardIdCounter"] += 1
+
+                    card = {
+                        "id": card_id,
+                        "owner": player,
+                        "cardFile": card_file,
+                        "image": f"/cards/{card_file}",
+                        "position": None,
+                        "inHand": True,
+                    }
+
+                    game_state["board"].append(card)
+                    game_state["players"][player]["hand"].append(card_id)
+                    
+                case "MOVE_CARD":
+                    card_id = msg["cardId"]
+                    pos = msg["position"]
+                    for card in game_state["board"]:
+                        if card["id"] == card_id:
+                            card["position"] = pos
+                            card["inHand"] = False
+                            break
+                
+                case "RETURN_TO_HAND":
+                    card_id = msg["cardId"]
+                    for card in game_state["board"]:
+                        if card["id"] == card_id:
+                            card["position"] = None
+                            card["inHand"] = True
+                            break
+                        
+                case "DISCARD_CARD":
+                    card_id = msg["cardId"]
+                    card = next((c for c in game_state["board"] if c["id"] == card_id), None)
+                    if not card:
+                        return
+
+                    owner = card["owner"]
+
+                    game_state["board"] = [c for c in game_state["board"] if c["id"] != card_id]
+                    game_state["usedPile"].append(card["cardFile"])
+                    game_state["players"][owner]["hand"].remove(card_id)
+
+                
                 case "RESET":
                     game_state = reset_game()
+                
+                case "UPDATE_HEALTH":
+                    player = msg["player"]
+                    delta = msg["delta"]
+
+                    p = game_state["players"][player]
+                    p["health"] = max(0, min(p["maxHealth"], p["health"] + delta))
                 
                 case "RESHUFFLE_USED":
                     if game_state["usedPile"]:
                         game_state["deck"].extend(game_state["usedPile"])
                         game_state["usedPile"] = []
                         game_state["deck"] = shuffle(game_state["deck"])
+                
+                case "TRANSFER_START":
+                    initiator = msg["from"]
+                    target = msg["to"]
 
+                    if game_state["transfer"] is not None:
+                        return  # only one transfer at a time
+
+                    if initiator not in game_state["players"]:
+                        return
+                    if target not in game_state["players"]:
+                        return
+
+                    game_state["transfer"] = {
+                        "from": initiator,
+                        "to": target,
+                        "mode": "SELECT",
+                        "selectedCards": []
+                    }
+                    
+                case "TRANSFER_SWAP_HANDS":
+                    t = game_state["transfer"]
+                    if not t:
+                        return
+
+                    a, b = t["from"], t["to"]
+
+                    game_state["players"][a]["hand"], game_state["players"][b]["hand"] = (
+                        game_state["players"][b]["hand"],
+                        game_state["players"][a]["hand"],
+                    )
+                    
+                    for card in game_state["board"]:
+                        if card["id"] in game_state["players"][a]["hand"]:
+                            card["owner"] = a
+                        elif card["id"] in game_state["players"][b]["hand"]:
+                            card["owner"] = b
+                    
+                    game_state["transfer"] = None
+                
+                case "TRANSFER_SELECT_CARDS":
+                    t = game_state["transfer"]
+                    from_p, to_p = t["from"], t["to"]
+
+                    for cid in msg["cardIds"]:
+                        if cid in game_state["players"][from_p]["hand"]:
+                            game_state["players"][from_p]["hand"].remove(cid)
+                            game_state["players"][to_p]["hand"].append(cid)
+
+                            for card in game_state["board"]:
+                                if card["id"] == cid:
+                                    card["owner"] = to_p
+
+                    game_state["transfer"] = None
+                    
+                case "TRANSFER_DISCARD_CARDS":
+                    t = game_state["transfer"]
+                    from_p = t["from"]
+
+                    for cid in msg["cardIds"]:
+                        card = next(c for c in game_state["board"] if c["id"] == cid)
+                        game_state["players"][from_p]["hand"].remove(cid)
+                        game_state["usedPile"].append(card["cardFile"])
+                        game_state["board"].remove(card)
+
+                    game_state["transfer"] = None
+                    
+                case "TRANSFER_CANCEL":
+                    game_state["transfer"] = None
+                
             await broadcast()
 
     except WebSocketDisconnect:
+        pass
+    finally:
         clients.discard(ws)
+        ws_to_player.pop(ws, None)
 
 
 # ======================
