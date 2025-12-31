@@ -416,8 +416,35 @@ async def websocket_endpoint(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        player = ws_to_player.pop(ws, None)
+
+        if player and player in game_state["players"]:
+            # 1️⃣ Return hand cards to deck
+            for cid in game_state["players"][player]["hand"]:
+                card = next((c for c in game_state["board"] if c["id"] == cid), None)
+                if card:
+                    game_state["deck"].append(card["cardFile"])
+                    game_state["board"].remove(card)
+
+            # 2️⃣ Safety: remove any stray board cards owned by player
+            stray = [c for c in game_state["board"] if c["owner"] == player]
+            for card in stray:
+                game_state["deck"].append(card["cardFile"])
+                game_state["board"].remove(card)
+
+            # 3️⃣ Remove player from game
+            del game_state["players"][player]
+
+            # 4️⃣ Cancel transfer if involved
+            t = game_state.get("transfer")
+            if t and (t["from"] == player or t["to"] == player):
+                game_state["transfer"] = None
+
+        # 5️⃣ Remove socket
         clients.discard(ws)
-        ws_to_player.pop(ws, None)
+
+        # 6️⃣ Broadcast updated state
+        await broadcast()
 
 
 # ======================
