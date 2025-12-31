@@ -101,7 +101,7 @@ CARD_FILES = [
 
 def create_initial_state():
     return {
-        "deck": shuffle(CARD_FILES),
+        "deck": shuffle(CARD_FILES.copy()),
         "usedPile": [],
         "board": [],
         "players": {},
@@ -131,6 +131,7 @@ def reset_game():
     game_state["deck"] = shuffle(CARD_FILES.copy())
     game_state["board"] = []
     game_state["cardIdCounter"] = 0
+    game_state["usedPile"] = []
 
     for player in game_state["players"].values():
         player["health"] = 30
@@ -331,16 +332,36 @@ async def websocket_endpoint(ws: WebSocket):
                     game_state["transfer"] = None
                     
                 case "TRANSFER_DISCARD_CARDS":
-                    t = game_state["transfer"]
-                    from_p = t["from"]
+                    t = game_state.get("transfer")
+                    if not t:
+                        return
 
-                    for cid in msg["cardIds"]:
-                        card = next(c for c in game_state["board"] if c["id"] == cid)
-                        game_state["players"][from_p]["hand"].remove(cid)
+                    from_p = t.get("from")
+                    if from_p not in game_state["players"]:
+                        game_state["transfer"] = None
+                        return
+
+                    hand = game_state["players"][from_p]["hand"]
+
+                    for cid in msg.get("cardIds", []):
+                        # Safely locate card on board
+                        card = next((c for c in game_state["board"] if c["id"] == cid), None)
+                        if not card:
+                            continue  # already discarded / invalid
+
+                        # Remove from player's hand if present
+                        if cid in hand:
+                            hand.remove(cid)
+
+                        # Move card to used pile
                         game_state["usedPile"].append(card["cardFile"])
+
+                        # Remove from board
                         game_state["board"].remove(card)
 
+                    # End transfer
                     game_state["transfer"] = None
+
                     
                 case "TRANSFER_CANCEL":
                     game_state["transfer"] = None
