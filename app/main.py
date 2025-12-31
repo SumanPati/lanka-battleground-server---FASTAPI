@@ -1,13 +1,25 @@
 import json
 import random
-from copy import deepcopy
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import uvicorn
+from pydantic import BaseModel
 
 app = FastAPI(title="Battleground Lanka")
+
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=[
+#         "http://localhost:5173",  # Vite dev
+#         "http://127.0.0.1:5173",
+#     ],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # ---------- PATHS ----------
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -99,9 +111,17 @@ CARD_FILES = [
 # GAME STATE
 # ======================
 
+def build_deck():
+    deck = []
+    for category in cards.values():
+        for card in category.values():
+            deck.extend([card["img"]] * card["count"])
+    random.shuffle(deck)
+    return deck
+
 def create_initial_state():
     return {
-        "deck": shuffle(CARD_FILES.copy()),
+        "deck": build_deck(),
         "usedPile": [],
         "board": [],
         "players": {},
@@ -128,7 +148,7 @@ def get_random_character():
 
 def reset_game():
     available_characters = list(PLAYER_CHARACTERS.keys())
-    game_state["deck"] = shuffle(CARD_FILES.copy())
+    game_state["deck"] = build_deck()
     game_state["board"] = []
     game_state["cardIdCounter"] = 0
     game_state["usedPile"] = []
@@ -172,6 +192,31 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+@app.get("/api/cards")
+def get_cards():
+    return cards
+
+class CardUpdate(BaseModel):
+    category: str
+    name: str
+    count: int
+
+@app.post("/api/cards")
+def update_card(cfg: CardUpdate):
+    global game_state
+    if cfg.category not in cards:
+        return {"error": "Invalid category"}
+
+    if cfg.name not in cards[cfg.category]:
+        return {"error": "Invalid card"}
+
+    cards[cfg.category][cfg.name]["count"] = max(0, cfg.count)
+    game_state = create_initial_state()
+    return {"status": "ok"}
+
+
+
 
 
 # ======================
