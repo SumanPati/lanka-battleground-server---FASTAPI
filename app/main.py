@@ -134,8 +134,8 @@ def reset_game():
     game_state["usedPile"] = []
 
     for player in game_state["players"].values():
-        player["health"] = 30
-        player["maxHealth"] = 30
+        player["health"] = 5
+        player["maxHealth"] = 5
         player["hand"] = []
         player["character"] = get_random_character()
     
@@ -199,8 +199,8 @@ async def websocket_endpoint(ws: WebSocket):
 
                     if player not in game_state["players"]:
                         game_state["players"][player] = {
-                            "health": 30,
-                            "maxHealth": 30,
+                            "health": 5,
+                            "maxHealth": 5,
                             "hand": [],
                             "character": get_random_character(),
                         }
