@@ -114,8 +114,8 @@ CARD_FILES = [
 def build_deck():
     deck = []
     for category in cards.values():
-        for card in category.values():
-            deck.extend([card["img"]] * card["count"])
+        for name, card in category.items():
+            deck.extend([{"name": name, "img": card["img"]}] * card["count"])
     return shuffle(deck)
 
 def create_initial_state():
@@ -266,15 +266,16 @@ async def websocket_endpoint(ws: WebSocket):
                     if not game_state["deck"]:
                         return
 
-                    card_file = game_state["deck"].pop(0)
+                    card_data = game_state["deck"].pop(0)
                     card_id = f"card-{game_state['cardIdCounter']}"
                     game_state["cardIdCounter"] += 1
 
                     card = {
                         "id": card_id,
                         "owner": player,
-                        "cardFile": card_file,
-                        "image": f"/cards/{card_file}",
+                        "name": card_data["name"],
+                        "cardFile": card_data,
+                        "image": f"/cards/{card_data['img']}",
                         "position": None,
                         "inHand": True,
                     }
@@ -285,30 +286,29 @@ async def websocket_endpoint(ws: WebSocket):
                     
                 case "MOVE_CARD":
                     player = ws_to_player.get(ws)
-                    add_log(f"{player} played a card")
+                    
                     card_id = msg["cardId"]
                     pos = msg["position"]
                     for card in game_state["board"]:
                         if card["id"] == card_id:
                             card["position"] = pos
                             card["inHand"] = False
+                            add_log(f"{player} played {card['name']}")
                             break
                 
                 case "RETURN_TO_HAND":
                     player = ws_to_player.get(ws)
-                    add_log(f"{player} played a card")
-                    
                     card_id = msg["cardId"]
                     
                     for card in game_state["board"]:
                         if card["id"] == card_id:
                             card["position"] = None
                             card["inHand"] = True
+                            add_log(f"{player} returned {card['name']}")
                             break
                         
                 case "DISCARD_CARD":
                     player = ws_to_player.get(ws)
-                    add_log(f"{player} discarded a card")
                     
                     card_id = msg["cardId"]
                     card = next((c for c in game_state["board"] if c["id"] == card_id), None)
@@ -316,7 +316,9 @@ async def websocket_endpoint(ws: WebSocket):
                         return
 
                     owner = card["owner"]
-
+                    
+                    add_log(f"{player} discarded {card['name']}")
+                    
                     game_state["board"] = [c for c in game_state["board"] if c["id"] != card_id]
                     game_state["usedPile"].append(card["cardFile"])
                     game_state["players"][owner]["hand"].remove(card_id)
@@ -329,14 +331,14 @@ async def websocket_endpoint(ws: WebSocket):
                 case "UPDATE_HEALTH":
                     player = msg["player"]
                     delta = msg["delta"]
-
-                    if delta > 0:
-                        add_log(f"{player} healed {delta} health")
-                    else:
-                        add_log(f"{player} lost {abs(delta)} health")
                                         
                     p = game_state["players"][player]
                     p["health"] = max(0, min(p["maxHealth"], p["health"] + delta))
+                
+                    if delta > 0:
+                        add_log(f"{player} healed {delta} health to {p['health']}")
+                    else:
+                        add_log(f"{player} lost {abs(delta)} health to {p['health']}")
                 
                 case "RESHUFFLE_USED":
                     
