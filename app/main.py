@@ -146,6 +146,7 @@ def get_random_character():
     return {"name": key, **PLAYER_CHARACTERS[key]}
 
 def reset_game():
+    global available_characters
     available_characters = list(PLAYER_CHARACTERS.keys())
     game_state["deck"] = build_deck()
     game_state["board"] = []
@@ -270,6 +271,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                     game_state["board"].append(card)
                     game_state["players"][player]["hand"].append(card_id)
+                    game_state["players"][player]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
                     
                 case "MOVE_CARD":
                     card_id = msg["cardId"]
@@ -299,6 +301,7 @@ async def websocket_endpoint(ws: WebSocket):
                     game_state["board"] = [c for c in game_state["board"] if c["id"] != card_id]
                     game_state["usedPile"].append(card["cardFile"])
                     game_state["players"][owner]["hand"].remove(card_id)
+                    game_state["players"][owner]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
 
                 
                 case "RESET":
@@ -355,6 +358,10 @@ async def websocket_endpoint(ws: WebSocket):
                             card["owner"] = b
                     
                     game_state["transfer"] = None
+                    
+                    game_state["players"][a]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+                    game_state["players"][b]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+                    
                 
                 case "TRANSFER_SELECT_CARDS":
                     t = game_state["transfer"]
@@ -369,6 +376,9 @@ async def websocket_endpoint(ws: WebSocket):
                                 if card["id"] == cid:
                                     card["owner"] = to_p
 
+                    game_state["players"][from_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+                    game_state["players"][to_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+                    
                     game_state["transfer"] = None
                     
                 case "TRANSFER_DISCARD_CARDS":
@@ -401,6 +411,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                     # End transfer
                     game_state["transfer"] = None
+                    game_state["players"][from_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
 
                     
                 case "TRANSFER_CANCEL":
