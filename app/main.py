@@ -126,7 +126,11 @@ def create_initial_state():
         "players": {},
         "cardIdCounter": 0,
         "transfer":None,
+        "log": [],
     }
+
+def add_log(entry: str):
+    game_state["log"].append(entry)
 
 game_state = create_initial_state()
 available_characters = list(PLAYER_CHARACTERS.keys())
@@ -152,6 +156,9 @@ def reset_game():
     game_state["board"] = []
     game_state["cardIdCounter"] = 0
     game_state["usedPile"] = []
+    game_state["transfer"] = None
+    game_state["log"] = []
+
 
     for player in game_state["players"].values():
         player["health"] = 5
@@ -237,6 +244,7 @@ async def websocket_endpoint(ws: WebSocket):
             match msg.get("type"):
                 case "JOIN":
                     player = msg["player"]
+                    add_log(f"{player} joined the game")
 
                     if player not in game_state["players"]:
                         game_state["players"][player] = {
@@ -250,6 +258,8 @@ async def websocket_endpoint(ws: WebSocket):
 
                 case "DRAW_CARD":
                     player = ws_to_player.get(ws)
+                    add_log(f"{player} drew 1 card")
+                    
                     if not player:
                         return
 
@@ -274,6 +284,8 @@ async def websocket_endpoint(ws: WebSocket):
                     game_state["players"][player]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
                     
                 case "MOVE_CARD":
+                    player = ws_to_player.get(ws)
+                    add_log(f"{player} played a card")
                     card_id = msg["cardId"]
                     pos = msg["position"]
                     for card in game_state["board"]:
@@ -283,7 +295,11 @@ async def websocket_endpoint(ws: WebSocket):
                             break
                 
                 case "RETURN_TO_HAND":
+                    player = ws_to_player.get(ws)
+                    add_log(f"{player} played a card")
+                    
                     card_id = msg["cardId"]
+                    
                     for card in game_state["board"]:
                         if card["id"] == card_id:
                             card["position"] = None
@@ -291,6 +307,9 @@ async def websocket_endpoint(ws: WebSocket):
                             break
                         
                 case "DISCARD_CARD":
+                    player = ws_to_player.get(ws)
+                    add_log(f"{player} discarded a card")
+                    
                     card_id = msg["cardId"]
                     card = next((c for c in game_state["board"] if c["id"] == card_id), None)
                     if not card:
@@ -311,10 +330,18 @@ async def websocket_endpoint(ws: WebSocket):
                     player = msg["player"]
                     delta = msg["delta"]
 
+                    if delta > 0:
+                        add_log(f"{player} healed {delta} health")
+                    else:
+                        add_log(f"{player} lost {abs(delta)} health")
+                                        
                     p = game_state["players"][player]
                     p["health"] = max(0, min(p["maxHealth"], p["health"] + delta))
                 
                 case "RESHUFFLE_USED":
+                    
+                    add_log(f"Used cards reshuffled to deck")
+                    
                     if game_state["usedPile"]:
                         game_state["deck"].extend(game_state["usedPile"])
                         game_state["usedPile"] = []
@@ -323,6 +350,8 @@ async def websocket_endpoint(ws: WebSocket):
                 case "TRANSFER_START":
                     initiator = msg["from"]
                     target = msg["to"]
+
+                    add_log(f"{initiator} initiated a transfer with {target}")
 
                     if game_state["transfer"] is not None:
                         return  # only one transfer at a time
@@ -345,6 +374,8 @@ async def websocket_endpoint(ws: WebSocket):
                         return
 
                     a, b = t["from"], t["to"]
+                    
+                    add_log(f"{a} and {b} swapped hands")
 
                     game_state["players"][a]["hand"], game_state["players"][b]["hand"] = (
                         game_state["players"][b]["hand"],
@@ -375,6 +406,8 @@ async def websocket_endpoint(ws: WebSocket):
                             for card in game_state["board"]:
                                 if card["id"] == cid:
                                     card["owner"] = to_p
+                                    
+                    add_log(f"{to_p} selected {msg['cardIds'].__len__()} cards from {from_p}")
 
                     game_state["players"][from_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
                     game_state["players"][to_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
@@ -387,6 +420,8 @@ async def websocket_endpoint(ws: WebSocket):
                         return
 
                     from_p = t.get("from")
+                    initiator = t.get("to")
+                    
                     if from_p not in game_state["players"]:
                         game_state["transfer"] = None
                         return
@@ -409,12 +444,15 @@ async def websocket_endpoint(ws: WebSocket):
                         # Remove from board
                         game_state["board"].remove(card)
 
+                    add_log(f"{initiator} discarded {msg.get('cardIds', []).__len__()} cards from {from_p}")
+                    
                     # End transfer
                     game_state["transfer"] = None
                     game_state["players"][from_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
 
                     
                 case "TRANSFER_CANCEL":
+                    add_log("Transfer was cancelled")
                     game_state["transfer"] = None
                 
             await broadcast()
@@ -424,6 +462,8 @@ async def websocket_endpoint(ws: WebSocket):
     finally:
         player = ws_to_player.pop(ws, None)
 
+        add_log(f"{player} left the game")
+        
         if player and player in game_state["players"]:
             # 1️⃣ Return hand cards to deck
             for cid in game_state["players"][player]["hand"]:
