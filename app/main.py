@@ -10,16 +10,16 @@ from pydantic import BaseModel
 
 app = FastAPI(title="Battleground Lanka")
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=[
-#         "http://localhost:5173",  # Vite dev
-#         "http://127.0.0.1:5173",
-#     ],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------- PATHS ----------
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -69,28 +69,28 @@ PLAYER_CHARACTERS = {
 
 cards = {
     "Action": {
-        "brahma": {"img": "Action/brahma.jpg", "count": 2},
-        "garuda": {"img": "Action/garuda.jpg", "count": 2},
-        "kaikeyi": {"img": "Action/kaikeyi.jpg", "count": 2},
-        "mareecha": {"img": "Action/mareecha.jpg", "count": 2},
-        "vimana": {"img": "Action/vimana.jpg", "count": 2},
-        "vishnu": {"img": "Action/vishnu.jpg", "count": 2},
+        "brahma": {"img": "Action/brahma.jpg", "count": 3},
+        "garuda": {"img": "Action/garuda.jpg", "count": 5},
+        "kaikeyi": {"img": "Action/kaikeyi.jpg", "count": 3},
+        "mareecha": {"img": "Action/mareecha.jpg", "count": 7},
+        "vimana": {"img": "Action/vimana.jpg", "count": 4},
+        "vishnu": {"img": "Action/vishnu.jpg", "count": 4},
     },
     "Damage": {
-        "agniastra": {"img": "Damage/agniastra.jpg", "count": 3},
+        "agniastra": {"img": "Damage/agniastra.jpg", "count": 5},
         "brahmastra": {"img": "Damage/brahmastra.jpg", "count": 3},
-        "gatiastra": {"img": "Damage/gatiastra.jpg", "count": 3},
-        "nagastra": {"img": "Damage/nagastra.jpg", "count": 3},
-        "shakti": {"img": "Damage/shakti.jpg", "count": 3},
-        "vanar sena": {"img": "Damage/vanar sena.jpg", "count": 3},
-        "vayuastra": {"img": "Damage/vayuastra.jpg", "count": 3},
+        "gatiastra": {"img": "Damage/gatiastra.jpg", "count": 5},
+        "nagastra": {"img": "Damage/nagastra.jpg", "count": 4},
+        "shakti": {"img": "Damage/shakti.jpg", "count": 1},
+        "vanar sena": {"img": "Damage/vanar sena.jpg", "count": 4},
+        "vayuastra": {"img": "Damage/vayuastra.jpg", "count": 4},
     },
     "Defence": {
         "aaina": {"img": "Defence/aaina.jpg", "count": 3},
-        "jatayu": {"img": "Defence/jatayu.jpg", "count": 3},
+        "jatayu": {"img": "Defence/jatayu.jpg", "count": 10},
     },
     "Health": {
-        "sanjeevani": {"img": "Health/sanjeevani.jpg", "count": 2},
+        "sanjeevani": {"img": "Health/sanjeevani.jpg", "count": 6},
         "shabari": {"img": "Health/shabari.jpg", "count": 2},
     },
     "Stat": {
@@ -116,8 +116,7 @@ def build_deck():
     for category in cards.values():
         for card in category.values():
             deck.extend([card["img"]] * card["count"])
-    random.shuffle(deck)
-    return deck
+    return shuffle(deck)
 
 def create_initial_state():
     return {
@@ -214,10 +213,6 @@ def update_card(cfg: CardUpdate):
     cards[cfg.category][cfg.name]["count"] = max(0, cfg.count)
     game_state = create_initial_state()
     return {"status": "ok"}
-
-
-
-
 
 # ======================
 # WEBSOCKET
