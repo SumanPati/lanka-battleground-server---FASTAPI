@@ -456,43 +456,44 @@ async def websocket_endpoint(ws: WebSocket):
                 case "TRANSFER_CANCEL":
                     add_log("Transfer was cancelled")
                     game_state["transfer"] = None
+                    
+                case "LEAVE":
+                    player = ws_to_player.get(ws)
+                    if player and player in game_state["players"]:
+                        add_log(f"{player} left the game")
+
+                        # 1️⃣ Return hand cards to deck
+                        for cid in game_state["players"][player]["hand"]:
+                            card = next((c for c in game_state["board"] if c["id"] == cid), None)
+                            if card:
+                                game_state["deck"].append(card["cardFile"])
+                                game_state["board"].remove(card)
+
+                        # 2️⃣ Safety: remove any stray board cards owned by player
+                        stray = [c for c in game_state["board"] if c["owner"] == player]
+                        for card in stray:
+                            game_state["deck"].append(card["cardFile"])
+                            game_state["board"].remove(card)
+
+                        # 3️⃣ Remove player from game
+                        del game_state["players"][player]
+
+                        # 4️⃣ Cancel transfer if involved
+                        t = game_state.get("transfer")
+                        if t and (t["from"] == player or t["to"] == player):
+                            game_state["transfer"] = None
                 
             await broadcast()
 
     except WebSocketDisconnect:
         pass
     finally:
-        player = ws_to_player.pop(ws, None)
+        player = ws_to_player.get(ws)
+        if player:
+            add_log(f"{player} disconnected")
 
-        add_log(f"{player} left the game")
-        
-        if player and player in game_state["players"]:
-            # 1️⃣ Return hand cards to deck
-            for cid in game_state["players"][player]["hand"]:
-                card = next((c for c in game_state["board"] if c["id"] == cid), None)
-                if card:
-                    game_state["deck"].append(card["cardFile"])
-                    game_state["board"].remove(card)
-
-            # 2️⃣ Safety: remove any stray board cards owned by player
-            stray = [c for c in game_state["board"] if c["owner"] == player]
-            for card in stray:
-                game_state["deck"].append(card["cardFile"])
-                game_state["board"].remove(card)
-
-            # 3️⃣ Remove player from game
-            del game_state["players"][player]
-
-            # 4️⃣ Cancel transfer if involved
-            t = game_state.get("transfer")
-            if t and (t["from"] == player or t["to"] == player):
-                game_state["transfer"] = None
-
-        # 5️⃣ Remove socket
         clients.discard(ws)
-
-        # 6️⃣ Broadcast updated state
-        await broadcast()
+        ws_to_player.pop(ws, None)
 
 
 # ======================
