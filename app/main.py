@@ -127,6 +127,7 @@ def create_initial_state():
         "cardIdCounter": 0,
         "transfer":None,
         "log": [],
+        "currentTurn": None,
     }
 
 def add_log(entry: str):
@@ -165,6 +166,9 @@ def reset_game():
         player["maxHealth"] = 5
         player["hand"] = []
         player["character"] = get_random_character()
+
+    p_list = list(game_state["players"].keys())
+    game_state["currentTurn"] = p_list[0] if p_list else None
     
     return game_state
 
@@ -255,6 +259,9 @@ async def websocket_endpoint(ws: WebSocket):
                         }
                         
                     ws_to_player[ws] = player
+
+                    if game_state["currentTurn"] is None:
+                        game_state["currentTurn"] = player
 
                 case "DRAW_CARD":
                     player = ws_to_player.get(ws)
@@ -456,6 +463,16 @@ async def websocket_endpoint(ws: WebSocket):
                 case "TRANSFER_CANCEL":
                     add_log("Transfer was cancelled")
                     game_state["transfer"] = None
+
+                case "END_TURN":
+                    player = ws_to_player.get(ws)
+                    if game_state.get("currentTurn") == player:
+                        p_list = list(game_state["players"].keys())
+                        if p_list:
+                            idx = p_list.index(player)
+                            next_p = p_list[(idx + 1) % len(p_list)]
+                            game_state["currentTurn"] = next_p
+                            add_log(f"Turn passed to {next_p}")
                     
                 case "LEAVE":
                     player = ws_to_player.get(ws)
@@ -475,10 +492,21 @@ async def websocket_endpoint(ws: WebSocket):
                             game_state["deck"].append(card["cardFile"])
                             game_state["board"].remove(card)
 
-                        # 3️⃣ Remove player from game
+                        # 3️⃣ Handle turn if active player leaves
+                        if game_state.get("currentTurn") == player:
+                            p_list = list(game_state["players"].keys())
+                            if len(p_list) > 1:
+                                idx = p_list.index(player)
+                                next_p = p_list[(idx + 1) % len(p_list)]
+                                game_state["currentTurn"] = next_p
+                                add_log(f"Turn passed to {next_p}")
+                            else:
+                                game_state["currentTurn"] = None
+
+                        # 4️⃣ Remove player from game
                         del game_state["players"][player]
 
-                        # 4️⃣ Cancel transfer if involved
+                        # 5️⃣ Cancel transfer if involved
                         t = game_state.get("transfer")
                         if t and (t["from"] == player or t["to"] == player):
                             game_state["transfer"] = None
