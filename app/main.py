@@ -161,11 +161,13 @@ def reset_game():
     game_state["log"] = []
 
 
-    for player in game_state["players"].values():
-        player["health"] = 5
-        player["maxHealth"] = 5
-        player["hand"] = []
-        player["character"] = get_random_character()
+    for player_name, player_data in game_state["players"].items():
+        player_data["health"] = 5
+        player_data["maxHealth"] = 5
+        player_data["hand"] = []
+        player_data["applied"] = []
+        player_data["character"] = get_random_character()
+        draw_cards(player_name, 5)
 
     p_list = list(game_state["players"].keys())
     game_state["currentTurn"] = p_list[0] if p_list else None
@@ -284,6 +286,7 @@ async def websocket_endpoint(ws: WebSocket):
                             "health": 5,
                             "maxHealth": 5,
                             "hand": [],
+                            "applied": [],
                             "character": get_random_character(),
                         }
                         drawn = draw_cards(player, 5)
@@ -341,6 +344,45 @@ async def websocket_endpoint(ws: WebSocket):
                     game_state["players"][owner]["hand"].remove(card_id)
                     game_state["players"][owner]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
 
+                case "APPLY":
+                    player = ws_to_player.get(ws)
+                    card_id = msg["cardId"]
+                    target_player = msg["target"]
+
+                    card = next((c for c in game_state["board"] if c["id"] == card_id), None)
+                    if card and target_player in game_state["players"]:
+                        owner = card["owner"]
+                        if card_id in game_state["players"][owner]["hand"]:
+                            game_state["players"][owner]["hand"].remove(card_id)
+                            game_state["players"][owner]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+
+                        card["inHand"] = False
+                        card["position"] = None
+                        
+                        if "applied" not in game_state["players"][target_player]:
+                            game_state["players"][target_player]["applied"] = []
+                        
+                        game_state["players"][target_player]["applied"].append(card)
+                        add_log(f"{player} applied {card['name']} to {target_player}")
+                
+                case "APPLIED_REMOVE":
+                    player = ws_to_player.get(ws)
+                    card_id = msg["cardId"]
+
+                    card = next((c for c in game_state["board"] if c["id"] == card_id), None)
+                    if card:
+                        target_name = None
+                        for p_name, p_data in game_state["players"].items():
+                            applied_list = p_data.get("applied", [])
+                            if any(c["id"] == card_id for c in applied_list):
+                                target_name = p_name
+                                p_data["applied"] = [c for c in applied_list if c["id"] != card_id]
+                                break
+                        
+                        if target_name:
+                            add_log(f"{player} removed {card['name']} from {target_name}")
+                            game_state["usedPile"].append(card["cardFile"])
+                            game_state["board"] = [c for c in game_state["board"] if c["id"] != card_id]
                 
                 case "RESET":
                     game_state = reset_game()
