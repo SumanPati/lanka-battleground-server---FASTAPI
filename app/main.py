@@ -524,7 +524,10 @@ async def websocket_endpoint(ws: WebSocket):
             await broadcast()
 
     except WebSocketDisconnect:
-        pass
+        print("WebSocketDisconnect...")
+        player = ws_to_player.get(ws)
+        if player:
+            print(f"{player} disconnected")
     finally:
         player = ws_to_player.get(ws)
         if player:
