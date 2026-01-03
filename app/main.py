@@ -230,6 +230,35 @@ def update_card(cfg: CardUpdate):
 # WEBSOCKET
 # ======================
 
+def draw_cards(player: str, count: int = 1):
+    drawn = 0
+    for _ in range(count):
+        if not game_state["deck"]:
+            break
+
+        card_data = game_state["deck"].pop(0)
+        card_id = f"card-{game_state['cardIdCounter']}"
+        game_state["cardIdCounter"] += 1
+
+        card = {
+            "id": card_id,
+            "owner": player,
+            "name": card_data["name"],
+            "cardFile": card_data,
+            "image": f"/cards/{card_data['img']}",
+            "position": None,
+            "inHand": True,
+        }
+
+        game_state["board"].append(card)
+        game_state["players"][player]["hand"].append(card_id)
+        drawn += 1
+
+    if drawn > 0:
+        game_state["players"][player]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+    
+    return drawn
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     global game_state, available_characters
@@ -257,6 +286,8 @@ async def websocket_endpoint(ws: WebSocket):
                             "hand": [],
                             "character": get_random_character(),
                         }
+                        drawn = draw_cards(player, 5)
+                        add_log(f"{player} given {drawn} card(s)")
                         
                     ws_to_player[ws] = player
 
@@ -265,31 +296,10 @@ async def websocket_endpoint(ws: WebSocket):
 
                 case "DRAW_CARD":
                     player = ws_to_player.get(ws)
-                    add_log(f"{player} drew 1 card")
-                    
-                    if not player:
-                        return
-
-                    if not game_state["deck"]:
-                        return
-
-                    card_data = game_state["deck"].pop(0)
-                    card_id = f"card-{game_state['cardIdCounter']}"
-                    game_state["cardIdCounter"] += 1
-
-                    card = {
-                        "id": card_id,
-                        "owner": player,
-                        "name": card_data["name"],
-                        "cardFile": card_data,
-                        "image": f"/cards/{card_data['img']}",
-                        "position": None,
-                        "inHand": True,
-                    }
-
-                    game_state["board"].append(card)
-                    game_state["players"][player]["hand"].append(card_id)
-                    game_state["players"][player]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
+                    if player:
+                        drawn = draw_cards(player, 1)
+                        if drawn > 0:
+                            add_log(f"{player} drew {drawn} card(s)")
                     
                 case "MOVE_CARD":
                     player = ws_to_player.get(ws)
