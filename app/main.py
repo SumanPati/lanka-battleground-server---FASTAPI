@@ -112,7 +112,7 @@ CARD_FILES = [
 # GAME STATE
 # ======================
 
-UNDO_LIST = []
+GAME_STATE_HIST = []
 
 def build_deck():
     deck = []
@@ -137,7 +137,7 @@ def add_log(entry: str):
     game_state["log"].append(entry)
 
 def save_state():
-    UNDO_LIST.append(copy.deepcopy(game_state))
+    GAME_STATE_HIST.append(copy.deepcopy(game_state))
 
 game_state = create_initial_state()
 available_characters = list(PLAYER_CHARACTERS.keys())
@@ -157,7 +157,7 @@ def get_random_character():
     return {"name": key, **PLAYER_CHARACTERS[key]}
 
 def reset_game():
-    global available_characters
+    global available_characters,GAME_STATE_HIST
     available_characters = list(PLAYER_CHARACTERS.keys())
     game_state["deck"] = build_deck()
     game_state["board"] = []
@@ -165,8 +165,8 @@ def reset_game():
     game_state["usedPile"] = []
     game_state["transfer"] = None
     game_state["log"] = []
-
-
+    GAME_STATE_HIST = []
+    
     for player_name, player_data in game_state["players"].items():
         player_data["health"] = 5
         player_data["maxHealth"] = 5
@@ -313,7 +313,7 @@ async def websocket_endpoint(ws: WebSocket):
                             add_log(f"{player} drew {drawn} card(s)")
                 
                 case "UNDO":
-                    game_state = UNDO_LIST.pop() if UNDO_LIST else game_state
+                    game_state = GAME_STATE_HIST.pop() if GAME_STATE_HIST else game_state
                     
                 case "MOVE_CARD":
                     player = ws_to_player.get(ws)
@@ -401,7 +401,6 @@ async def websocket_endpoint(ws: WebSocket):
                             game_state["board"] = [c for c in game_state["board"] if c["id"] != card_id]
                 
                 case "RESET":
-                    save_state()
                     game_state = reset_game()
                 
                 case "UPDATE_HEALTH":
