@@ -311,6 +311,11 @@ async def websocket_endpoint(ws: WebSocket):
                         drawn = draw_cards(player, 1)
                         if drawn > 0:
                             add_log(f"{player} drew {drawn} card(s)")
+                    
+                    if game_state["usedPile"] and game_state["deck"].__len__() <= 5:
+                        game_state["deck"].extend(game_state["usedPile"])
+                        game_state["usedPile"] = []
+                        game_state["deck"] = shuffle(game_state["deck"])
                 
                 case "UNDO":
                     game_state = GAME_STATE_HIST.pop() if GAME_STATE_HIST else game_state
@@ -416,16 +421,6 @@ async def websocket_endpoint(ws: WebSocket):
                     else:
                         add_log(f"{player} lost {abs(delta)} health to {p['health']}")
                 
-                case "RESHUFFLE_USED":
-                    save_state()
-                    
-                    add_log(f"Used cards reshuffled to deck")
-                    
-                    if game_state["usedPile"]:
-                        game_state["deck"].extend(game_state["usedPile"])
-                        game_state["usedPile"] = []
-                        game_state["deck"] = shuffle(game_state["deck"])
-                
                 case "TRANSFER_START":
                     initiator = msg["from"]
                     target = msg["to"]
@@ -528,7 +523,7 @@ async def websocket_endpoint(ws: WebSocket):
                         # Remove from board
                         game_state["board"].remove(card)
 
-                    add_log(f"{initiator} discarded {msg.get('cardIds', []).__len__()} cards from {from_p}")
+                        add_log(f"{initiator} discarded {card['name']} from {from_p}")
                     
                     # End transfer
                     game_state["transfer"] = None
