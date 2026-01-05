@@ -484,7 +484,7 @@ async def websocket_endpoint(ws: WebSocket):
                                 if card["id"] == cid:
                                     card["owner"] = to_p
                                     
-                    add_log(f"{to_p} selected {msg['cardIds'].__len__()} cards from {from_p}")
+                    add_log(f"{to_p} took {msg['cardIds'].__len__()} card(s) from {from_p}")
 
                     game_state["players"][from_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
                     game_state["players"][to_p]["hand"].sort(key=lambda cid: int(cid.split("-")[1]))
