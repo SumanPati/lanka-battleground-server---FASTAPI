@@ -16,6 +16,7 @@ app = FastAPI(title="Battleground Lanka")
 #     allow_origins=[
 #         "http://localhost:5173",  # Vite dev
 #         "http://127.0.0.1:5173",
+#         "http://192.168.1.5:5173",
 #     ],
 #     allow_credentials=True,
 #     allow_methods=["*"],
@@ -38,6 +39,13 @@ app.mount(
     StaticFiles(directory=FRONTEND_DIR / "cards"),
     name="cards"
 )
+
+app.mount(
+    "/rules",
+    StaticFiles(directory=FRONTEND_DIR / "rules"),
+    name="rules"
+)
+
 
 
 # ======================
@@ -67,6 +75,17 @@ PLAYER_CHARACTERS = {
     "sita": {"img": "Character/sita.jpg"},
     "vibhishana": {"img": "Character/vibhishana.jpg"},
 }
+
+RULES = [
+    "/rules/1.jpg",
+    "/rules/2.jpg",
+    "/rules/3.jpg",
+    "/rules/4.jpg",
+    "/rules/5.jpg",
+    "/rules/6.jpg",
+    "/rules/7.jpg",
+    "/rules/8.jpg"
+]
 
 cards = {
     "Action": {
@@ -215,6 +234,14 @@ def health():
 @app.get("/api/cards")
 def get_cards():
     return cards
+
+@app.get("/api/activeplayers")
+def get_active_players():
+    return list(game_state["players"].keys())
+
+@app.get("/api/rules")
+def get_rules():
+    return RULES
 
 class CardUpdate(BaseModel):
     category: str
