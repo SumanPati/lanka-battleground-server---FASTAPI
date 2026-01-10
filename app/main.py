@@ -565,12 +565,28 @@ async def websocket_endpoint(ws: WebSocket):
                 case "END_TURN":
                     player = ws_to_player.get(ws)
                     if game_state.get("currentTurn") == player:
+                        if len(game_state["players"][player]["hand"]) > 5:
+                            await ws.send_text(json.dumps({
+                                "type": "ERROR",
+                                "message": "Player has more than 5 cards.Please discard."
+                            }))
+                            continue
                         p_list = list(game_state["players"].keys())
                         if p_list:
                             save_state()
                             idx = p_list.index(player)
                             next_p = p_list[(idx + 1) % len(p_list)]
                             game_state["currentTurn"] = next_p
+
+                            drawn = draw_cards(next_p, 2)
+                            if drawn > 0:
+                                add_log(f"{next_p} drew {drawn} card(s)")
+                            
+                            if game_state["usedPile"] and len(game_state["deck"]) <= 5:
+                                game_state["deck"].extend(game_state["usedPile"])
+                                game_state["usedPile"] = []
+                                game_state["deck"] = shuffle(game_state["deck"])
+
                             add_log(f"Turn passed to {next_p}")
                     
                 case "LEAVE":
