@@ -68,7 +68,7 @@ PLAYER_CHARACTERS = {
     "hanuman": {"img": "Character/hanuman.jpg"},
     "kumbhakarna": {"img": "Character/kumbhakarna.jpg"},
     "lakshmana": {"img": "Character/lakshmana.jpg"},
-    "manthara": {"img": "Character/manthara.jpg"},
+    # "manthara": {"img": "Character/manthara.jpg"},
     "meghanad": {"img": "Character/meghanad.jpg"},
     "rama": {"img": "Character/rama.jpg"},
     "ravana": {"img": "Character/ravana.jpg"},
@@ -164,16 +164,19 @@ available_characters = list(PLAYER_CHARACTERS.keys())
 clients: set[WebSocket] = set()
 ws_to_player: dict[WebSocket, str] = {}
 
-def get_random_character():
+def get_random_character(num: int = 1):
     global available_characters
 
-    if not available_characters:
-        available_characters = list(PLAYER_CHARACTERS.keys())
+    chars = []
+    for _ in range(num):
+        if not available_characters:
+            available_characters = list(PLAYER_CHARACTERS.keys())
 
-    key = random.choice(available_characters)
-    available_characters.remove(key)
+        key = random.choice(available_characters)
+        available_characters.remove(key)
+        chars.append({"name": key, **PLAYER_CHARACTERS[key]})
 
-    return {"name": key, **PLAYER_CHARACTERS[key]}
+    return chars
 
 def reset_game():
     global available_characters,GAME_STATE_HIST
@@ -191,7 +194,7 @@ def reset_game():
         player_data["maxHealth"] = 5
         player_data["hand"] = []
         player_data["applied"] = []
-        player_data["character"] = get_random_character()
+        player_data["character"] = get_random_character(2)
         draw_cards(player_name, 5)
 
     p_list = list(game_state["players"].keys())
@@ -321,7 +324,7 @@ async def websocket_endpoint(ws: WebSocket):
                             "maxHealth": 5,
                             "hand": [],
                             "applied": [],
-                            "character": get_random_character(),
+                            "character": get_random_character(2),
                         }
                         drawn = draw_cards(player, 5)
                         add_log(f"{player} given {drawn} card(s)")
@@ -330,7 +333,7 @@ async def websocket_endpoint(ws: WebSocket):
 
                     if game_state["currentTurn"] is None:
                         game_state["currentTurn"] = player
-
+                        
                 case "DRAW_CARD":
                     player = ws_to_player.get(ws)
                     if player:
